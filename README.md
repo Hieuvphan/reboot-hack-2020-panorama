@@ -9,7 +9,7 @@ Our data was extracted from the Icelandic meteorological office: [vedur.is](http
 ![data.txt](data.png)
 
 ## Live demo
-https://davidhs.github.io/reboot-hack-2020-panorama/
+https://davidhs.github.io/reboot-hack-2020-Apoca-AR/
 
 ## LHÍ challenge
 
