@@ -1,7 +1,9 @@
 /**
+ * If the argument `condition` is falsy then an exception (error?) is raised
+ * with message `message`.
  * 
  * @param {any} condition 
- * @param {string} message 
+ * @param {string=} message 
  */
 function assert(condition, message = "Assertion failed!") {
   if (!condition) {
@@ -10,6 +12,7 @@ function assert(condition, message = "Assertion failed!") {
 }
 
 /**
+ * Returns `max(minValue, min(maxValue, value))`.
  * 
  * @param {number} value 
  * @param {number} minValue 
@@ -27,6 +30,7 @@ function clamp(value, minValue, maxValue) {
 }
 
 /**
+ * Returns the mouse position with in HTML element `el`.
  * 
  * @param {HTMLElement} el 
  * @param {MouseEvent} evt 
@@ -40,6 +44,7 @@ function getMousePosition(el, evt) {
 }
 
 /**
+ * Fetches an image (HTML image element) from the URL `url`.
  * 
  * @param {string} url 
  * @returns {Promise<HTMLImageElement>}
@@ -59,13 +64,24 @@ function fetchImage(url) {
   });
 }
 
-// Junk
-let _;
+
+/** Resolves once the document (DOM and other assets) have been loaded. */
+const promiseWindowLoaded = new Promise((resolve) => {
+  const listener = () => {
+    window.removeEventListener("load", listener);
+    resolve();
+  };
+  window.addEventListener("load", listener);
+});
+
+
 
 /** @type {HTMLCanvasElement} */
 let canvas;
 
 
+// NOTE: when we draw images we can use HTML image elements AND HTML canvas
+// elements.
 
 /** @type {HTMLImageElement} */
 let backgroundImage;
@@ -85,6 +101,7 @@ let borderImage;
 /** @type {HTMLCanvasElement} */
 let borderCanvas = document.createElement("canvas");
 
+
 /**
  * What to scale the image by so its height fits the canvas's height.
  * 
@@ -97,26 +114,22 @@ let borderCanvas = document.createElement("canvas");
  */
 let imageScale = 1;
 
-const promiseWindowLoaded = new Promise((resolve, reject) => {
-  const handleLoad = () => {
-    window.removeEventListener("load", handleLoad);
-    resolve();
-  };
-  window.addEventListener("load", handleLoad);
-});
 
+/** Set to `true` when animation and rendering can begin. */
 let ready = false;
 
+/** Whether is rendering or not. */
 let animating = false;
 
 
 
 let imageOffsetX = 0;
 
-/** @type {number} */
+/** @type {number} ID of next animation frame (used when pausing animation). */
 let animationRequestID;
 
 
+/** Mouse coordinates. */
 const mouse = {
   x: 0,
   y: 0
@@ -126,9 +139,13 @@ const mouse = {
 let previousTime = 0;
 
 
+/** Panning speed (left / right) in pixels per second. */
 const panningSpeed = 800;
 
 
+//////////////
+// Keyboard //
+//////////////
 
 const KEY_ARROW_LEFT = 37;
 const KEY_ARROW_UP = 38;
@@ -142,19 +159,11 @@ const KEY_S = 83;
 
 const g_keys = [];
 
+window.onkeydown = (ev) => { g_keys[ev.keyCode] = true; };
+window.onkeyup = (ev) => { g_keys[ev.keyCode] = false; };
 
-window.onkeydown = (ev) => {
-  if (false) {
-    console.info(ev);
-  }
-  g_keys[ev.keyCode] = true;
-};
-
-window.onkeyup = (ev) => {
-  g_keys[ev.keyCode] = false;
-};
-
-/**
+/** 
+ * Determine if key with key code `keyCode` is pressed.
  * 
  * @param {number} keyCode 
  */
@@ -163,7 +172,9 @@ function isKeyDown(keyCode) {
 }
 
 /**
- * 
+ * Determine if any key with any of the key codes in array `keyCodes` is
+ * pressed.
+ *
  * @param {number[]} keyCodes 
  */
 function isOneKeyDown(keyCodes) {
@@ -174,7 +185,8 @@ function isOneKeyDown(keyCodes) {
   return false;
 }
 
-window.onresize = (ev) => {
+// Resize canvas if window changes.
+window.onresize = () => {
   resizeCanvas();
 };
 
@@ -185,7 +197,7 @@ window.onresize = (ev) => {
  * @param {number} scale
  */
 function resizeImage(source, target, scale) {
-  
+
   target.width = Math.round(scale * source.width);
   target.height = Math.round(scale * source.height);
 
@@ -212,12 +224,18 @@ function resizeImage(source, target, scale) {
   }
 }
 
+/**
+ * Resizes all the images to fit the canvas.
+ */
 function resizeImages() {
   resizeImage(backgroundImage, backgroundCanvas, imageScale);
   resizeImage(foregroundImage, foregroundCanvas, imageScale);
   resizeImage(borderImage, borderCanvas, imageScale * 1.8);
 }
 
+/**
+ * Call this function to resize canvas.
+ */
 function resizeCanvas() {
   if (!ready) return;
 
@@ -231,13 +249,17 @@ function resizeCanvas() {
   resizeImages();
 }
 
-
+/**
+ * Stops animating or the main loop.
+ */
 function stopAnimation() {
   animating = false;
-  window.cancelAnimationFrame(animationRequestID);;
+  window.cancelAnimationFrame(animationRequestID);
 }
 
-
+/**
+ * Starts animating or the main loop.
+ */
 function startAnimation() {
   if (animating) return;
   animating = true;
@@ -247,27 +269,45 @@ function startAnimation() {
 
 /**
  * 
- * @param {number} currentTime 
+ * @param {number} currentTime Current time (me thinks) in milliseconds
  */
 function animate(currentTime) {
   if (!animating) return;
+
+  // Determine how much time has passed since last time.  Should not be more
+  // than 1000 / 60 = 16.667 milliseconds (i.e. 60 FPS).
   const dt = Math.max(currentTime - previousTime, 1000 / 60);
 
   previousTime = currentTime;
 
+  // Main loop iteration
   step(dt);
-  render(dt);
 
+  // If we stop animating then we must cancel the next animation frame with
+  // this ID.
   animationRequestID = window.requestAnimationFrame(animate);
 }
 
+
 /**
+ * Main loop iteration
  * 
- * @param {number} dt 
+ * @param {number} dt Time that has passed since last frame (in milliseconds).
  */
 function step(dt) {
+  update(dt);
+  render(dt);
+}
+
+
+/**
+ * Update phase in main loop iteration.
+ * 
+ * @param {number} dt Time that has passed since last frame (in milliseconds).
+ */
+function update(dt) {
+  // Move offset of image (proportional to dt)
   {
-    // Move offset of image (proportional to dt)
     const imageMovement = panningSpeed * dt / 1000;
 
     const canvasWidth = canvas.width;
@@ -283,9 +323,11 @@ function step(dt) {
   }
 }
 
+
 /**
+ * Render next frame and display.
  * 
- * @param {number} dt 
+ * @param {number} dt Time that has passed since last frame (in milliseconds).
  */
 function render(dt) {
   if (!ready) return;
@@ -296,9 +338,6 @@ function render(dt) {
   // TODO: crap is resolution dependent :'(
   const borderWidth = borderCanvas.width;
   const borderHeight = borderCanvas.height;
-
-  const backgroundScale = 0.9;
-
 
   // Draw foreground image
   {
@@ -311,7 +350,7 @@ function render(dt) {
   }
 
   // Draw portion of background image
-  if (true) {
+  {
     const image = backgroundCanvas;
 
     const backgroundWidth = borderWidth * 0.937;
@@ -329,7 +368,6 @@ function render(dt) {
 
     ctx.drawImage(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);
   }
-  
 
   // Draw border image
   {
@@ -341,20 +379,20 @@ function render(dt) {
     ctx.drawImage(image, sx, sy);
   }
 
+  // DEBUG: Framerate
   if (false) {
-    // DEBUG: Framerate
     ctx.fillStyle = "green";
     ctx.fillText(`FPS: ${1000 / dt}`, 10, 10);
   }
 }
 
-
 async function main() {
-  [_, foregroundImage, backgroundImage, borderImage] = await Promise.all([
+  // Wait for all resources to be fetched.
+  [, foregroundImage, backgroundImage, borderImage] = await Promise.all([
     promiseWindowLoaded,
     fetchImage("./HappyPanorama.jpg"),
     fetchImage("./SadPanorama.jpg"),
-    
+
     fetchImage("./phone-landscape.png")
   ]);
 
@@ -371,22 +409,14 @@ async function main() {
 
   resizeCanvas();
 
-
-
-  canvas.onmousemove = (evt) => {
+  // Add mouse listener to canvas.
+  canvas.addEventListener("mousemove", (evt) => {
     const { x, y } = getMousePosition(canvas, evt);
-
     mouse.x = x;
     mouse.y = y;
-  };
-
-  
-
-  // await resizeImages();
+  });
 
   startAnimation();
 }
 
 main();
-
-
